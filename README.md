@@ -83,13 +83,13 @@ make init
 ```
 
 `make init` te guide interactivement : choix du webserver, de la base de données, version de Symfony. C'est tout.  
-Au démarrage, le conteneur **crée automatiquement** un projet Symfony vierge si aucun projet n'est détecté.
+Au démarrage, le conteneur **créé automatiquement** un projet Symfony vierge si aucun projet n'est détecté.
 
 ---
 
 ### Configuration manuelle (sans `make init`)
 
-Crée un fichier `.env.local` à la racine :
+Créer un fichier `.env.local` à la racine :
 
 ```dotenv
 # Nom du projet (préfixe des conteneurs Docker)
@@ -119,7 +119,7 @@ make up
 ```
 
 ```bash
-# 🔧 Équivalent sans make (exemple avec niginx + mariadb)
+# 🔧 Équivalent sans make (exemple avec nginx + mariadb)
 docker compose -p symfony_docker_starter_kit \
   -f config/docker/docker-compose.common.yml \
   -f config/docker/docker-compose.mariadb.yml \
