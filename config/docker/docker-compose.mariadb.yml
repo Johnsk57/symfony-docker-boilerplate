@@ -1,0 +1,79 @@
+# =====================================================
+# 🗄️ MARIADB + phpMyAdmin - SYMFONY STACK
+# =====================================================
+#
+# MARIADB 11.7 :
+# ✅ Healthcheck innodb_initialized
+# ✅ Persistance data/logs
+# ✅ Ports dynamiques (.env.local)
+# ✅ Restart auto
+#
+# phpMyAdmin 5.2.2 :
+# ✅ Wait mariadb healthy
+# ✅ Proxy-ready (expose 80 internal)
+# ✅ Auth Symfony DB
+# =====================================================
+
+services:
+  # =====================================================
+  # 🗄️ MARIADB 11.7 (Symfony Doctrine)
+  # =====================================================
+  mariadb:
+    image: mariadb:11.7  # 🎯 LTS stable (2026)
+    restart: unless-stopped
+
+    env_file:
+      - ../../.env.local  # DB_NAME=symfony...
+
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+      MARIADB_DATABASE: ${DB_NAME:-symfony}
+      MARIADB_USER: ${DB_USER:-symfony}
+      MARIADB_PASSWORD: ${DB_PASSWORD:-symfony}
+
+    # 🔌 Port host (ex: mysql -h127.0.0.1 -P3306)
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+
+    # 💾 Persistance + logs
+    volumes:
+      - ../../data/mariadb:/var/lib/mysql      # 📁 Data durable
+      - ../../logs/mariadb:/var/log/mysql      # 📊 Logs host
+
+    # =====================================================
+    # 🩺 HEALTHCHECK PRO (innodb_initialized)
+    # =====================================================
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s  # ⏳ Init DB lente OK
+    networks:
+      - symfony-network  # Symfony + phpMyAdmin
+
+  # =====================================================
+  # 🖥️ phpMyAdmin 5.2.2 (DB GUI)
+  # =====================================================
+  phpmyadmin:
+    image: phpmyadmin:5.2.2  # 🎯 LTS moderne
+    depends_on:
+      mariadb:
+        condition: service_healthy  # 🚀 Wait DB UP
+
+    env_file:
+      - ../../.env.local  # PMA_USER=symfony...
+
+    environment:
+      PMA_HOST: mariadb        # Docker DNS
+      PMA_PORT: 3306
+      PMA_USER: ${DB_USER:-symfony}
+      PMA_PASSWORD: ${DB_PASSWORD:-symfony}
+
+    # 🔌 Port host direct (dev)
+    ports:
+      - "${PHPMYADMIN_PORT:-8081}:80"  # http://localhost:8081
+
+    restart: unless-stopped
+    networks:
+      - symfony-network  # Apache proxy https://phpmyadmin.localhost

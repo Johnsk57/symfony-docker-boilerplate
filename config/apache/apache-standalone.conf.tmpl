@@ -1,0 +1,128 @@
+# =====================================================
+# 🌐 APACHE VHOST - SYMFONY + MAILDEV (envsubst)
+# =====================================================
+#
+# FEATURES :
+# ✅ HTTP → HTTPS redirect (301)
+# ✅ Symfony : public/ + FallbackResource index.php
+# ✅ Multi-domain : localhost + maildev.localhost
+# ✅ Cache 1 an : CSS/JS/images/fonts
+# ✅ Gzip : HTML/CSS/JS/JSON
+# ✅ Proxy sécurisé : MailDev (SSL offload)
+# ✅ KeepAlive optimisé
+# =====================================================
+
+ServerName localhost
+
+# =====================================================
+# 🔄 HTTP → HTTPS REDIRECT (301 permanent)
+# =====================================================
+<VirtualHost *:80>
+    ServerName localhost
+    ServerAlias maildev.localhost
+
+    RewriteEngine On
+    RewriteCond %{HTTPS} off
+    RewriteRule ^(.*)$ https://%{HTTP_HOST}$1 [R=301,L]
+</VirtualHost>
+
+# =====================================================
+# 🔒 HTTPS SYMFONY MAIN (localhost)
+# =====================================================
+<VirtualHost *:443>
+    ServerAdmin webmaster@localhost
+    ServerName localhost
+
+    # 🎯 envsubst : remplacé par le nom du projet au démarrage du conteneur
+    DocumentRoot /var/www/html/${PROJECT_NAME}/public
+
+    # SSL self-signed (dev) - PROD : Let's Encrypt
+    SSLEngine on
+    SSLCertificateFile /etc/ssl/certs/local/selfsigned.crt
+    SSLCertificateKeyFile /etc/ssl/certs/local/selfsigned.key
+
+    # 📁 SYMFONY PUBLIC (routing + front controller)
+    # Options : listing désactivé (-Indexes), liens symboliques autorisés
+    <Directory /var/www/html/${PROJECT_NAME}/public>
+        Options +FollowSymLinks -Indexes
+        AllowOverride All
+        Require all granted
+        # FrontController Symfony : toutes les URLs → index.php
+        FallbackResource /index.php
+        # Désactive ETag pour de meilleures perfs cache
+        FileETag None
+    </Directory>
+
+    # 🚫 bundles/ : assets statiques, pas de fallback index.php
+    <Directory /var/www/html/${PROJECT_NAME}/public/bundles>
+        FallbackResource disabled
+    </Directory>
+
+    # =====================================================
+    # ⚡ CACHE AGRESSIF (1 an static assets)
+    # 🎯 Lighthouse 100/100 performance
+    # =====================================================
+    <IfModule mod_expires.c>
+        ExpiresActive On
+        ExpiresByType text/css "access plus 1 year"
+        ExpiresByType application/javascript "access plus 1 year"
+        ExpiresByType image/png "access plus 1 year"
+        ExpiresByType image/jpeg "access plus 1 year"
+        ExpiresByType image/gif "access plus 1 year"
+        ExpiresByType image/svg+xml "access plus 1 year"
+        ExpiresByType font/woff "access plus 1 year"
+        ExpiresByType font/woff2 "access plus 1 year"
+    </IfModule>
+
+    # =====================================================
+    # 💨 GZIP COMPRESSION
+    # =====================================================
+    <IfModule mod_deflate.c>
+        AddOutputFilterByType DEFLATE text/html text/plain text/css
+        AddOutputFilterByType DEFLATE application/javascript text/javascript
+        AddOutputFilterByType DEFLATE application/json
+    </IfModule>
+
+    # 📊 Logs séparés SSL
+    ErrorLog ${APACHE_LOG_DIR}/error_ssl.log
+    CustomLog ${APACHE_LOG_DIR}/access_ssl.log combined
+
+    # ⚙️ PHP Handler
+    <FilesMatch \.php$>
+        SetHandler application/x-httpd-php
+    </FilesMatch>
+
+    # 🌐 KeepAlive optimisé (connexions persistantes)
+    KeepAlive On
+    MaxKeepAliveRequests 100
+    KeepAliveTimeout 5
+</VirtualHost>
+
+# =====================================================
+# 📧 MAILDEV PROXY (https://maildev.localhost)
+# =====================================================
+<VirtualHost *:443>
+    ServerName maildev.localhost
+
+    # SSL (self-signed dev)
+    SSLEngine on
+    SSLCertificateFile /etc/ssl/certs/local/selfsigned.crt
+    SSLCertificateKeyFile /etc/ssl/certs/local/selfsigned.key
+
+    # 🔌 PROXY → MAILDEV (port 1080)
+    # SSL offload : Apache termine le SSL, forward en HTTP interne
+    SSLProxyEngine on
+    # Dev uniquement : ignore les certificats internes auto-signés
+    SSLProxyVerify none
+    SSLProxyCheckPeerCN off
+    SSLProxyCheckPeerName off
+
+    # Préserve le Host header original
+    ProxyPreserveHost On
+    ProxyPass / http://mail:1080/
+    ProxyPassReverse / http://mail:1080/
+
+    # 📊 Logs MailDev
+    ErrorLog ${APACHE_LOG_DIR}/maildev_error.log
+    CustomLog ${APACHE_LOG_DIR}/maildev_access.log combined
+</VirtualHost>
