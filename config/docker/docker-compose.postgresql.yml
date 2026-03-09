@@ -1,0 +1,78 @@
+# =====================================================
+# 🐘 POSTGRESQL 17 + pgAdmin 4 - SYMFONY STACK
+# =====================================================
+#
+# POSTGRES 17 :
+# ✅ Healthcheck pg_isready (connexion DB)
+# ✅ Persistance data/logs
+# ✅ Ports dynamiques (.env.local)
+#
+# pgAdmin 9.12 :
+# ✅ Wait postgres healthy
+# ✅ Master password OFF (dev)
+# ✅ Server mode OFF (simple UI)
+# =====================================================
+
+services:
+  # =====================================================
+  # 🐘 POSTGRESQL 17 (Doctrine ORM)
+  # =====================================================
+  postgres:
+    image: postgres:17  # 🎯 Dernière LTS (2026)
+    restart: unless-stopped
+
+    env_file:
+      - ../../.env.local  # DB_NAME=symfony...
+
+    environment:
+      POSTGRES_DB: ${DB_NAME:-symfony}
+      POSTGRES_USER: ${DB_USER:-symfony}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-symfony}
+      # 💡 ROOT auto-créé (postgres)
+
+    # 🔌 Port host (psql -h127.0.0.1 -p5432)
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+
+    # 💾 Persistance data + logs
+    volumes:
+      - ../../data/postgres:/var/lib/postgresql/data    # 📁 DB durable
+      - ../../logs/postgres:/var/log/postgresql         # 📊 Logs host
+
+    # =====================================================
+    # 🩺 HEALTHCHECK (pg_isready connexion)
+    # =====================================================
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-symfony} -d ${DB_NAME:-symfony}"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s  # ⏳ Init PG lente
+    networks:
+      - symfony-network  # Symfony + pgAdmin
+
+  # =====================================================
+  # 🖥️ pgAdmin 4 v9.12 (Postgres GUI)
+  # =====================================================
+  pgadmin:
+    image: dpage/pgadmin4:9.12  # 🎯 Stable
+    depends_on:
+      postgres:
+        condition: service_healthy  # 🚀 Wait DB UP
+
+    env_file:
+      - ../../.env.local  # PGADMIN_PASSWORD=...
+
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@localhost.com
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-password_admin}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'      # 🎯 Simple UI (pas multi-serveur)
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'  # 🔓 Dev libre
+
+    # 🔌 Port host direct (dev)
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"  # http://localhost:5050
+
+    restart: unless-stopped
+    networks:
+      - symfony-network  # Proxy https://pgadmin.localhost

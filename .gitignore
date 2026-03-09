@@ -1,0 +1,33 @@
+###> Règle globale ###
+!**/.gitkeep
+
+###> Docker ###
+#.env.local
+data/**
+logs/**
+config/composer/cache/**
+config/apache/certs/*.crt
+config/apache/certs/*.key
+config/apache/certs/*.pem
+config/nginx/certs/*.crt
+config/nginx/certs/*.key
+config/nginx/certs/*.pem
+
+###> Symfony ###
+/www/var/cache/**
+/www/var/log/**
+/www/var/sessions/**
+/www/vendor/
+/www/.env.local*
+/www/public/bundles/
+/www/public/build/
+
+###> IDE ###
+.idea/
+.vscode/
+
+###> OS ###
+.DS_Store
+Thumbs.db
+Desktop.ini
+*~

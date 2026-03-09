@@ -1,0 +1,38 @@
+# =====================================================
+# 📧 MAILDEV SERVICE - EMAILS DEV SYMFONY
+# =====================================================
+#
+# FEATURES :
+# ✅ Maildev 2.1.0 (UI + SMTP fake)
+# ✅ Ports dynamiques (.env.local)
+# ✅ SMTP 1025 → Symfony mailer
+# ✅ Web UI 1080 → https://maildev.localhost
+# ✅ Réseau interne (Apache proxy)
+# =====================================================
+
+services:
+  # =====================================================
+  # 📬 MAILDEV : Catch + UI emails dev
+  # =====================================================
+  mail:
+    image: maildev/maildev:2.1.0  # 🎯 Stable + UI moderne
+    env_file:
+      - ../../.env.local  # MAILDEV_WEB_PORT=1080...
+
+    # =====================================================
+    # 🔌 PORTS EXPOSÉS HOST (dev access)
+    # =====================================================
+    ports:
+      - "${MAILDEV_WEB_PORT:-1080}:1080"   # UI → http://localhost:1080
+      - "${MAILDEV_SMTP_PORT:-1025}:1025"  # Symfony → smtp://mail:1025
+
+    restart: unless-stopped  # 🔄 Auto-restart Docker
+    networks:
+      - symfony-network  # 🌐 Apache proxy + php-fpm access
+
+# =====================================================
+# 🌐 RÉSEAU DOCKER INTERNE
+# =====================================================
+networks:
+  symfony-network:
+    driver: bridge  # Standard Docker (php ↔ mail ↔ phpmyadmin)

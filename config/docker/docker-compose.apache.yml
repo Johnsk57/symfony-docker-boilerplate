@@ -1,0 +1,92 @@
+# =====================================================
+# 🐳 PHP-APACHE SERVICE - SYMFONY STACK
+# =====================================================
+#
+# FEATURES :
+# ✅ Build custom Dockerfile.apache (PHP 8.4 + extensions)
+# ✅ Ports dynamiques (.env HTTP_PORT/HTTPS_PORT)
+# ✅ Volumes optimisés (cache/log bind mounts)
+# ✅ Configs templatées (envsubst Apache)
+# ✅ Certs + SSL générateur
+# ✅ Depends mail (MailDev emails dev)
+# =====================================================
+
+services:
+  php:
+    # =====================================================
+    # 🛠️  BUILD CUSTOM (PHP + Apache + Symfony tools)
+    # =====================================================
+    build:
+      context: ../..  # Racine projet (Makefile/.env)
+      dockerfile: config/docker/Dockerfile.apache  # PHP 8.4-apache
+
+    # =====================================================
+    # 🌐 ENV : .env + .env.local (Makefile → Docker)
+    # =====================================================
+    env_file:
+      - ../../.env        # Defaults (HTTP_PORT=80...)
+      - ../../.env.local  # PROJECT_NAME=symfony...
+
+    # =====================================================
+    # 🔌 PORTS DYNAMIQUES (expose 80/443 → host)
+    # =====================================================
+    ports:
+      - "${HTTP_PORT:-80}:80"    # HTTP → redirect HTTPS
+      - "${HTTPS_PORT:-443}:443" # HTTPS Symfony
+
+    # =====================================================
+    # 📁 VOLUMES OPTIMISÉS (perf + persistance)
+    # =====================================================
+    volumes:
+      # 🎯 Code source complet
+      - ../../www:/var/www/html
+
+      # ⚡ Cache Symfony persistant (perf x10)
+      - ../../www/${PROJECT_NAME:-symfony}/var/cache:/var/www/html/${PROJECT_NAME:-symfony}/var/cache
+
+      # 📊 Logs Symfony persistant
+      - ../../www/${PROJECT_NAME:-symfony}/var/log:/var/www/html/${PROJECT_NAME:-symfony}/var/log
+
+      # 🗂️ Logs Apache host
+      - ../../logs/http:/var/log/apache2
+
+      # 📄 Apache VHost template (envsubst)
+      - ../../config/apache/apache-standalone.conf.tmpl:/etc/apache2/sites-available/apache-standalone.conf.tmpl:ro
+
+      # 🗄️ DB upstream (MariaDB/pgSQL proxy)
+      - ../../config/apache/upstream-${DATABASE:-mariadb}.conf:/etc/apache2/sites-enabled/db-upstream.conf
+
+      # ⚙️  PHP custom ini (memory_limit...)
+      - ../../config/php/config.ini:/usr/local/etc/php/conf.d/custom_php.ini
+
+      # 🎼 Composer cache persistant
+      - ../../config/composer:/root/.composer
+
+      # 🔒 SSL certs dev
+      - ../../config/apache/certs:/etc/ssl/certs/local
+
+      # 🚪 Cert generator script
+      - ../../config/apache/ssl.sh:/generate-cert.sh
+
+    # =====================================================
+    # 🔄 RESTART + DÉPENDANCES
+    # =====================================================
+    restart: unless-stopped  # Docker restart policy
+    depends_on:
+      - mail  # 📧 MailDev emails Symfony dev
+
+    # =====================================================
+    # ⏳ ATTENTE ENTRYPOINT
+    # =====================================================
+    healthcheck:
+      test: [ "CMD-SHELL", "test -f /tmp/entrypoint-ready" ]
+      interval: 5s
+      timeout: 3s
+      retries: 30   # ~2min30
+      start_period: 10s
+
+    # =====================================================
+    # 🌐 RÉSEAU DOCKER INTERNE
+    # =====================================================
+    networks:
+      - symfony-network  # mail/phpmyadmin/pgadmin access

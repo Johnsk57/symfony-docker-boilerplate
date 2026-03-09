@@ -1,0 +1,63 @@
+name: 🎯 Quality Gate
+# =====================================================
+# 🚦 QUALITY GATE SYMFONY : CI/CD "verte" garantie
+#
+# LOGIQUE :
+# 1. Détecte auto template vide → skip vert (0min)
+# 2. Projet réel → Docker up + make quality
+# 3. KO → Workflow rouge + détails erreur
+#
+# 🎯 AVANTAGES :
+# - 100% vert sur templates vides (gain temps)
+# - Tests complets sur vrais projets
+# - `make` standard (pas de magie Actions)
+# =====================================================
+
+on:
+  [push, pull_request, workflow_dispatch]  # ✅ Standard : push/PR/manuel
+
+permissions:
+  contents: read  # 📖 Lecture seule (checkout + make)
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest  # 💨 Ubuntu 22.04+ (Docker natif)
+
+    steps:
+      # =====================================================
+      # 📥 CLONAGE (défaut suffisant)
+      # =====================================================
+      - uses: actions/checkout@v4  # ✅ v4 = dernier stable (2024+)
+
+      # =====================================================
+      # 🔍 DÉTECTION INTELLIGENTE SYMFONY
+      # =====================================================
+      - name: 🔎 Détecter projet Symfony
+        id: symfony  # 🎯 ID pour conditions if:
+        run: |
+          # ✅ VÉRIFICATION (anti-faux positif) :
+          # www/*/composer.json (projet déployé)
+          if ls www/*/composer.json 2>/dev/null | grep -q .; then
+            echo "projet=true" >> $GITHUB_OUTPUT
+            echo "🧑‍💻 Projet Symfony détecté → tests complets"
+          else
+            echo "projet=false" >> $GITHUB_OUTPUT
+            echo "📦 Template vide/standard → skip qualité (workflow VERT)"
+            exit 0
+          fi
+
+      # =====================================================
+      # 🐳 DOCKER UP (conditionnel uniquement)
+      # =====================================================
+      - name: 🏗️ Docker up (projet seulement)
+        if: steps.symfony.outputs.projet == 'true'  # 🎯 Skip template vide
+        run: |
+          make up -d  # ✅ Detached (-d) = parallélisable
+          sleep 45    # ⏱️ 45s = DB+Migrations+Cache (ajustez si lent)
+
+      # =====================================================
+      # ✅ QUALITY FULL (make quality = Rector + Psalm + Tests)
+      # =====================================================
+      - name: 🧹 make quality (projet seulement)
+        if: steps.symfony.outputs.projet == 'true'
+        run: make quality  # 🎯 Standard Makefile (Rector/PSALM/Tests)

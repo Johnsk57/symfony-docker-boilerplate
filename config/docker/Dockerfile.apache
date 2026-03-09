@@ -1,0 +1,80 @@
+# =====================================================
+# 🐳 PHP 8.4 APACHE - SYMFONY PRODUCTION READY
+# =====================================================
+#
+# FEATURES :
+# ✅ PHP 8.4 + extensions Symfony (intl/zip/xsl/sqlite)
+# ✅ Composer + Symfony CLI
+# ✅ Apache : rewrite/headers/deflate/ssl/proxy
+# ✅ OpCache optimisé PROD
+# ✅ Xdebug (dev) + entrypoint custom
+# =====================================================
+
+FROM php:8.4-apache
+
+# =====================================================
+# 📦 DEPENDANCES + EXTENSIONS SYMFONY
+# =====================================================
+RUN apt-get update && apt-get install -y \
+    # 🔧 Outils dev/deploy
+    git \
+    unzip \
+    gettext-base \
+    wget \
+    # 📚 Libs PHP extensions
+    libicu-dev \
+    libxml2-dev \
+    libzip-dev \
+    libxslt1-dev \
+    sqlite3 \
+    libsqlite3-dev \
+    libonig-dev \
+    # 💾 INSTALL + CLEAN
+    && docker-php-ext-install \
+        intl \
+        pdo \
+        pdo_mysql \
+        pdo_sqlite \
+        zip \
+        xsl \
+    # 🐛 XDEBUG (dev seulement)
+    && pecl install xdebug \
+    && docker-php-ext-enable xdebug \
+    && rm -rf /var/lib/apt/lists/*
+
+# 🎼 COMPOSER OFFICIEL
+COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
+
+# ⚙️  SYMFONY CLI (global)
+RUN wget https://get.symfony.com/cli/installer -O - | bash \
+    && mv /root/.symfony*/bin/symfony /usr/local/bin/symfony
+
+# =====================================================
+# 🌐 APACHE MODULES PROD (SSL + perf + proxy)
+# =====================================================
+RUN a2enmod rewrite headers deflate expires setenvif ssl proxy proxy_http
+# 📋 DÉTAIL :
+# - rewrite : Symfony routes (.htaccess)
+# - headers : Security (HSTS/CSP)
+# - deflate : Gzip compression
+# - ssl : HTTPS
+# - proxy_http : MailDev/phpMyAdmin/pgAdmin
+
+# =====================================================
+# ⚡ OPCACHE OPTIMISÉ PRODUCTION
+# =====================================================
+RUN docker-php-ext-install opcache && docker-php-ext-enable opcache
+RUN echo "opcache.enable=1" >> /usr/local/etc/php/conf.d/opcache.ini \
+    && echo "opcache.memory_consumption=256" >> /usr/local/etc/php/conf.d/opcache.ini \
+    && echo "opcache.max_accelerated_files=20000" >> /usr/local/etc/php/conf.d/opcache.ini \
+    && echo "opcache.revalidate_freq=0" >> /usr/local/etc/php/conf.d/opcache.ini \
+    && echo "opcache.validate_timestamps=1" >> /usr/local/etc/php/conf.d/opcache.ini
+
+# 🚪 ENTRYPOINT CUSTOM
+COPY config/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+WORKDIR /var/www/html
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["apache2-foreground"]

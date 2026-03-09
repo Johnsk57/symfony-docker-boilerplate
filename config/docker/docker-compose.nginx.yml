@@ -1,0 +1,112 @@
+# =====================================================
+# 🌐 NGINX + PHP-FPM - SYMFONY PRODUCTION STACK
+# =====================================================
+#
+# NGINX 1.27 :
+# ✅ Config templatée (envsubst)
+# ✅ Ports dynamiques HTTP/HTTPS
+# ✅ SSL + certs generator
+# ✅ Logs persistant
+#
+# PHP-FPM :
+# ✅ Build custom (Dockerfile.php-fpm)
+# ✅ Cache Symfony persistant
+# ✅ Depends mail (emails dev)
+# =====================================================
+
+services:
+  # =====================================================
+  # 🌐 NGINX 1.27 (reverse proxy Symfony)
+  # =====================================================
+  nginx:
+    image: nginx:1.27  # 🎯 LTS stable (2026)
+    env_file:
+      - ../../.env.local  # PROJECT_NAME=...
+
+    # 🔌 Ports host (80/443 → localhost)
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+
+    # =====================================================
+    # 📁 VOLUMES NGINX OPTIMISÉS
+    # =====================================================
+    volumes:
+      # 💻 Code readonly (sécurité)
+      - ../../www:/var/www/html:ro
+
+      # 📄 Config template (envsubst)
+      - ../../config/nginx/nginx.conf.tmpl:/etc/nginx/nginx.conf.tmpl:ro
+
+      # 🗄️ DB upstream (MariaDB/pgSQL)
+      - ../../config/nginx/upstream-${DATABASE:-mariadb}.conf:/etc/nginx/conf.d/z-db-upstream.conf
+
+      # 📊 Logs persistant
+      - ../../logs/nginx:/var/log/nginx
+
+      # 🔒 SSL generator + certs
+      - ../../config/nginx/ssl.sh:/generate-cert.sh
+      - ../../config/nginx/certs:/etc/nginx/certs
+
+      # 🚪 Custom entrypoint
+      - ../../config/nginx/entrypoint.sh:/entrypoint.sh
+
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]  # envsubst + wait deps
+
+    restart: unless-stopped
+    depends_on:
+      - php-fpm  # ⚙️  PHP backend
+      - mail     # 📧 Emails dev
+    networks:
+      - symfony-network  # Internal Docker
+
+  # =====================================================
+  # ⚙️  PHP-FPM (nginx backend)
+  # =====================================================
+  php-fpm:
+    build:
+      context: ../..  # Racine projet
+      dockerfile: config/docker/Dockerfile.php-fpm  # PHP 8.4-fpm
+      args:
+        PROJECT_NAME: ${PROJECT_NAME:-symfony}  # Build-time arg
+
+    env_file:
+      - ../../.env        # Defaults
+      - ../../.env.local  # Overrides
+
+    # =====================================================
+    # 📁 VOLUMES PHP-FPM OPTIMISÉS
+    # =====================================================
+    volumes:
+      # 💻 Code source
+      - ../../www:/var/www/html
+
+      # ⚡ Cache Symfony persistant
+      - ../../www/${PROJECT_NAME:-symfony}/var/cache:/var/www/html/${PROJECT_NAME:-symfony}/var/cache
+
+      # 📊 Logs Symfony
+      - ../../www/${PROJECT_NAME:-symfony}/var/log:/var/www/html/${PROJECT_NAME:-symfony}/var/log
+
+      # 🗂️ PHP-FPM logs host
+      - ../../logs/http:/var/log/php-fpm
+
+      # ⚙️  PHP config custom
+      - ../../config/php/config.ini:/usr/local/etc/php/conf.d/custom_php.ini
+
+      # 🎼 Composer cache persistant
+      - ../../config/composer:/root/.composer
+
+
+    # =====================================================
+    # ⏳ ATTENTE ENTRYPOINT
+    # =====================================================
+    healthcheck:
+      test: [ "CMD-SHELL", "test -f /tmp/entrypoint-ready" ]
+      interval: 5s
+      timeout: 3s
+      retries: 30   # ~2min30
+      start_period: 10s
+
+    restart: unless-stopped
+    networks:
+      - symfony-network  # nginx + mail + DB

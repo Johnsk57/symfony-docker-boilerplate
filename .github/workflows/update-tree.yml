@@ -1,0 +1,91 @@
+name: Update Tree
+# =====================================================
+# 🎯 OBJECTIF : Génère automatiquement TREE.md avec la structure
+# du projet à chaque push/PR. Évite les commits inutiles via
+# comparaison intelligente (ignore espaces/encodage).
+#
+# ⚠️ ATTENTION : Exclut volontairement certains répertoires
+# sensibles/volumineux (vendor, node_modules, data/logs/www).
+# Ajustez -I si besoin.
+# =====================================================
+
+on:
+  [push, pull_request, workflow_dispatch]  # ✅ Couvre tous les cas : push auto, PR review, déclenchement manuel
+
+permissions:
+  contents: write  # 🎯 Nécessaire pour git push (sinon 403 Forbidden)
+
+jobs:
+  tree:
+    runs-on: ubuntu-latest  # 💡 Optimisé : ubuntu-latest = Ubuntu 22.04+ (stable, rapide)
+
+    steps:
+      # =====================================================
+      # 📥 CLONAGE COMPLET (historique requis pour git push)
+      # =====================================================
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}  # 🔑 Bot token auto (pas besoin de PAT personnel)
+          fetch-depth: 0  # ⚠️ CRITIQUE : 0 = clone complet (sinon git push échoue)
+
+      # =====================================================
+      # 🛠️ INSTALL TREE (outil standard Unix)
+      # =====================================================
+      - name: Install tree
+        run: sudo apt-get install -y tree  # ✅ Non-persistent (runs-on propre)
+
+      # =====================================================
+      # 🔍 GÉNÉRATION + COMPARAISON INTELLIGENTE
+      # =====================================================
+      - name: Generate & Compare tree
+        id: tree  # 🎯 ID requis pour ${{ steps.tree.outputs.changed }}
+        run: |
+          # 🎨 Génération TREE formaté Markdown (normalisé)
+          {
+            echo "## 📁 Structure du Projet"
+            echo '```'
+            # tree options EXPLIQUÉES :
+            # -a = tous fichiers (y/cachés)
+            # -I '...' = EXCLUT répertoires sensibles/volumineux
+            # --prune = n'affiche PAS contenu des répertoires exclus
+            # --charset ascii = ✅ Compatible GitHub Markdown (pas d'UTF8 spécial)
+            # sed 's/[[:space:]]*$//' = strip trailing spaces (comparaison fiable)
+            tree -a -I 'vendor|node_modules|.git|__pycache__|data/*/*|logs/*/*|www|tree.temp.md' \
+          --prune --charset ascii | sed 's/[[:space:]]*$//' | tr -d '\r'  
+            echo '```'
+            echo "*Auto-généré via GitHub Actions*"
+          } > tree.temp.md
+
+          # 🤖 Comparaison "intelligente" (ignore whitespace)
+          # -w = ignore all whitespace (espaces, tabs, fins de ligne)
+          if [ -f TREE.md ] && \
+            diff -w <(tr -d '\r' < tree.temp.md) <(tr -d '\r' < TREE.md) >/dev/null 2>&1; then    
+            echo "ℹ️ TREE identique → skip commit"
+            echo "changed=false" >> $GITHUB_OUTPUT  # ✅ Sortie pour condition if:
+            rm tree.temp.md
+            exit 0  # 🚪 Sortie propre (pas d'erreur)
+          fi
+
+          # ✅ Mise à jour + staging
+          echo "✅ TREE différent → commit automatique"
+          mv tree.temp.md TREE.md
+          git add TREE.md
+          echo "changed=true" >> $GITHUB_OUTPUT
+
+      # =====================================================
+      # 🚀 COMMIT/PUSH CONDITIONNEL (uniquement si changement)
+      # =====================================================
+      - name: Commit & Push
+        if: steps.tree.outputs.changed == 'true'  # 🎯 ÉCONOMIE : skip si identique
+        run: |
+          # 🤖 Identité GitHub Bot officiel (pas de warning " suspicious commit")
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          # 💬 Message convention Git : "docs:" + [bot] (changelog friendly)
+          git commit -m "docs: update TREE.md [bot]"
+          
+          # 🔄 Rebase par-dessus le remote APRÈS commit
+          git pull --rebase origin ${{ github.ref_name }}
+          
+          git push  # ✅ Token + permissions = push autorisé
